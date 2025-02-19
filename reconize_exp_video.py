@@ -113,8 +113,8 @@ known_face_encodings, known_face_names = load_images_from_folder(image_folder)
 
 # Caminho para o arquivo de vídeo na mesma pasta do script
 script_dir = os.path.dirname(os.path.abspath(__file__))
-input_video_path = os.path.join(script_dir, 'video.mp4')  # Substitua 'meu_video.mp4' pelo nome do seu vídeo
-output_video_path = os.path.join(script_dir, 'output_video_recognize.mp4')  # Nome do vídeo de saída
+input_video_path = os.path.join(script_dir, 'reuniao_cond.mp4')  # Substitua 'meu_video.mp4' pelo nome do seu vídeo
+output_video_path = os.path.join(script_dir, 'outputreuniao_cond_recognize.mp4')  # Nome do vídeo de saída
 
 # Chamar a função para detectar emoções e reconhecer faces no vídeo, salvando o vídeo processado
 detect_faces_and_emotions(input_video_path, output_video_path, known_face_encodings, known_face_names)
