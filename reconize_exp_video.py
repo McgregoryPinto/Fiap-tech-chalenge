@@ -4,6 +4,9 @@ import os
 import numpy as np
 from tqdm import tqdm
 from deepface import DeepFace
+import mediapipe as mp
+import moviepy.editor as mpy
+import speech_recognition as sr
 
 def load_images_from_folder(folder):
     known_face_encodings = []
@@ -30,6 +33,11 @@ def load_images_from_folder(folder):
     return known_face_encodings, known_face_names
 
 def detect_faces_and_emotions(video_path, output_path, known_face_encodings, known_face_names):
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose()
+    mp_drawing = mp.solutions.drawing_utils
+    hands_up_count = 0
+
     # Capturar vídeo do arquivo especificado
     cap = cv2.VideoCapture(video_path)
 
@@ -62,6 +70,24 @@ def detect_faces_and_emotions(video_path, output_path, known_face_encodings, kno
 
         # Obter as localizações e codificações das faces conhecidas no frame
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = pose.process(rgb_frame)
+
+        # Desenhar as anotações da pose no frame
+        if results.pose_landmarks:
+            #mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            # Obter landmarks necessárias
+            landmarks = results.pose_landmarks.landmark
+            left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
+            right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
+            left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+            right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+            hands_up_count = 0
+            # Verificar se alguma das mãos está levantada (acima do ombro correspondente)
+            if left_wrist.y < left_shoulder.y:
+                hands_up_count += 1
+            if right_wrist.y < right_shoulder.y:
+                hands_up_count += 1
+
         face_locations = face_recognition.face_locations(rgb_frame)
         face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
 
@@ -75,6 +101,10 @@ def detect_faces_and_emotions(video_path, output_path, known_face_encodings, kno
             if matches[best_match_index]:
                 name = known_face_names[best_match_index]
             face_names.append(name)
+        # Exibir contagem de mãos levantadas no topo do vídeo
+        total_people = face_names.count
+        text = f"{hands_up_count} pessoas levantaram a mao"
+        cv2.putText(frame, text, (50, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (238, 173, 45), 2)
 
         # Iterar sobre cada face detectada pelo DeepFace
         for face in result:
@@ -85,7 +115,7 @@ def detect_faces_and_emotions(video_path, output_path, known_face_encodings, kno
             dominant_emotion = face['dominant_emotion']
 
             # Desenhar um retângulo ao redor da face
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            #cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
             # Escrever a emoção dominante acima da face
             cv2.putText(frame, dominant_emotion, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
@@ -105,6 +135,30 @@ def detect_faces_and_emotions(video_path, output_path, known_face_encodings, kno
     out.release()
     cv2.destroyAllWindows()
 
+def extract_audio_from_video(video_path, audio_path):
+    video = mpy.VideoFileClip(video_path)
+    video.audio.write_audiofile(audio_path)
+
+def transcribe_audio_to_text(audio_path, text_output_path):
+    recognizer = sr.Recognizer()
+    
+    with sr.AudioFile(audio_path) as source:
+        audio = recognizer.record(source)  # lê todo o áudio do arquivo
+        
+        try:
+            # Usa o serviço de reconhecimento de fala do Google
+            text = recognizer.recognize_google(audio, language="pt-BR")  # Use "en-US" para inglês
+            print("Transcrição: " + text)
+            
+            # Salva a transcrição em um arquivo de texto
+            with open(text_output_path, 'w', encoding='utf-8') as file:
+                file.write(text)
+                
+        except sr.UnknownValueError:
+            print("Google Speech Recognition não conseguiu entender o áudio")
+        except sr.RequestError as e:
+            print("Erro ao solicitar resultados do serviço de reconhecimento de fala do Google; {0}".format(e))
+
 # Caminho para a pasta de imagens com rostos conhecidos
 image_folder = 'images'
 
@@ -114,7 +168,13 @@ known_face_encodings, known_face_names = load_images_from_folder(image_folder)
 # Caminho para o arquivo de vídeo na mesma pasta do script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 input_video_path = os.path.join(script_dir, 'reuniao_cond.mp4')  # Substitua 'meu_video.mp4' pelo nome do seu vídeo
-output_video_path = os.path.join(script_dir, 'outputreuniao_cond_recognize.mp4')  # Nome do vídeo de saída
+output_video_path = os.path.join(script_dir, 'reuniao_cond_output.mp4')  # Nome do vídeo de saída
+audio_path = os.path.join(script_dir, 'reuniao_cond_audio1.wav')
+text_output_path = os.path.join(script_dir, 'reuniao_cond_transcricao1.txt')
 
-# Chamar a função para detectar emoções e reconhecer faces no vídeo, salvando o vídeo processado
+#primeiro vamos extrair o audio e a transcrição
+extract_audio_from_video(input_video_path,audio_path)
+transcribe_audio_to_text(audio_path, text_output_path)
+
+#agora vamos verificar as pessoas, emoçoes e bracos levantados
 detect_faces_and_emotions(input_video_path, output_video_path, known_face_encodings, known_face_names)
